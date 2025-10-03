@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Grid Idle Game</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #0f1f4f; color: #f0f0f0; text-align: center; padding: 40px; }
+    h1 { margin-bottom: 30px; }
+    #essence { font-size: 1.5em; margin-bottom: 30px; }
+
+    /* --- Main Grid --- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 40px);
+      grid-template-rows: repeat(4, 40px);
+      gap: 10px;
+      justify-content: center;
+      margin: 0 auto 30px;
+    }
+    .cell { width: 40px; height: 40px; background: #2d3f73; border: 2px solid #4c5d91; border-radius: 6px; cursor: pointer; transition: background 0.3s, transform 0.1s; }
+    .cell.red { background: #e74c3c; }
+    .cell:active { transform: scale(0.95); }
+
+    /* --- Controls --- */
+    .controls { margin-top: 20px; }
+    button { padding: 8px 16px; margin: 5px; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; }
+    #save-btn { background: #4caf50; color: white; }
+    #reset-btn { background: #e74c3c; color: white; }
+
+    /* --- Upgrades --- */
+    .upgrades { margin-top: 60px; }
+    .upgrade-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, 60px);
+      gap: 20px;
+      justify-content: center;
+      margin: 20px 250px; /* 250px side margins */
+    }
+    .upgrade {
+      width: 60px;
+      height: 60px;
+      background: #2d3f73;
+      border: 2px solid #4c5d91;
+      border-radius: 6px;
+      cursor: pointer;
+      position: relative;
+    }
+    .upgrade:hover { background: #3b4f85; }
+    .tooltip {
+      display: none;
+      position: absolute;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e2b5a;
+      color: #f0f0f0;
+      padding: 8px;
+      border-radius: 8px;
+      width: 220px;
+      font-size: 0.85em;
+      text-align: left;
+      line-height: 1.3em;
+      z-index: 10;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .upgrade:hover .tooltip { display: block; }
+  </style>
+</head>
+<body>
+<h1>Ok we might be cooking</h1>
+<div id="essence">Red Essence: 0</div>
+<div class="grid" id="grid"></div>
+<div class="controls">
+  <button id="save-btn">Save Game</button>
+  <button id="reset-btn">Reset Game</button>
+</div>
+
+<!-- Upgrades -->
+<div class="upgrades">
+  <h2>Upgrades</h2>
+  <div class="upgrade-grid" id="upgrade-grid">
+    <div class="upgrade" id="upgrade-1">
+      <div class="tooltip" id="upgrade-1-tooltip"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const gridElement = document.getElementById("grid");
+  const essenceDisplay = document.getElementById("essence");
+
+  let essence = 0;
+  const size = 4;
+  const cells = [];
+
+  // --- Create grid ---
+  for (let i=0;i<size*size;i++){
+    const cell=document.createElement("div");
+    cell.classList.add("cell");
+    cell.dataset.active="false";
+    cell.dataset.index=i;
+    cell.addEventListener("click",()=>{
+      if(cell.classList.contains("red")){
+        essence++;
+        updateEssenceDisplay();
+        cell.classList.remove("red");
+        cell.dataset.active="false";
+        saveGame();
+      }
+    });
+    gridElement.appendChild(cell);
+    cells.push(cell);
+  }
+
+  function updateEssenceDisplay(){
+    essenceDisplay.textContent=`Red Essence: ${essence}`;
+  }
+
+  // --- Upgrades ---
+  let upgradesBought = 0;
+  const maxUpgrades = 10;
+
+  function upgradeCost(){ return Math.floor(5*Math.pow(1.25,upgradesBought)); }
+  let spawnInterval = 5000;
+  let nextSpawnTimeout = null;
+
+  function currentEffect(){ return `Spawn interval: ${(spawnInterval/1000).toFixed(2)}s`; }
+
+  function updateUpgradeTooltip(){
+    const tooltip=document.getElementById("upgrade-1-tooltip");
+    tooltip.innerHTML=`
+      <div><b>Spawn Accelerator</b></div>
+      <div>Red essence spawns faster.</div>
+      <div>Cost: ${upgradeCost()} Red Essence</div>
+      <div>Purchased: ${upgradesBought} / ${maxUpgrades}</div>
+      <div>${currentEffect()}</div>
+    `;
+  }
+
+  document.getElementById("upgrade-1").addEventListener("click",()=>{
+    const cost=upgradeCost();
+    if(essence>=cost && upgradesBought<maxUpgrades){
+      essence-=cost;
+      upgradesBought++;
+      spawnInterval = Math.max(500, spawnInterval-250); // reduce 0.25s
+      updateEssenceDisplay();
+      updateUpgradeTooltip();
+      saveGame();
+    }
+  });
+
+  // --- Spawn Logic ---
+  function spawnRedCell(){
+    const activeCells=cells.filter(c=>c.dataset.active==="true");
+    if(activeCells.length>=3) return;
+    const inactiveCells=cells.filter(c=>c.dataset.active==="false");
+    if(inactiveCells.length===0) return;
+    const randomCell=inactiveCells[Math.floor(Math.random()*inactiveCells.length)];
+    randomCell.classList.add("red");
+    randomCell.dataset.active="true";
+    saveGame();
+  }
+
+  function spawnRedCellLoop(){
+    nextSpawnTimeout = setTimeout(()=>{
+      spawnRedCell();
+      spawnRedCellLoop();
+    }, spawnInterval);
+  }
+
+  // --- Save / Load ---
+  function saveGame(){
+    const saveData={
+      essence,
+      redCells: cells.map((c,i)=>c.dataset.active==="true"?i:null).filter(i=>i!==null),
+      upgradesBought,
+      spawnInterval
+    };
+    localStorage.setItem("idleSave",JSON.stringify(saveData));
+  }
+
+  function loadGame(){
+    const raw=localStorage.getItem("idleSave");
+    if(!raw) return;
+    const saveData=JSON.parse(raw);
+
+    essence=saveData.essence||0;
+    upgradesBought=saveData.upgradesBought||0;
+    spawnInterval=saveData.spawnInterval||5000;
+    updateEssenceDisplay();
+    updateUpgradeTooltip();
+
+    // reset grid
+    cells.forEach(c=>{c.classList.remove("red"); c.dataset.active="false";});
+    if(saveData.redCells){
+      saveData.redCells.forEach(i=>{
+        if(cells[i]){
+          cells[i].classList.add("red");
+          cells[i].dataset.active="true";
+        }
+      });
+    }
+  }
+
+  // --- Autosave ---
+  setInterval(saveGame,10000);
+
+  // --- Buttons ---
+  document.getElementById("save-btn").addEventListener("click",saveGame);
+  document.getElementById("reset-btn").addEventListener("click",()=>{
+    localStorage.removeItem("idleSave");
+    essence=0;
+    upgradesBought=0;
+    spawnInterval=5000;
+    updateEssenceDisplay();
+    updateUpgradeTooltip();
+    cells.forEach(c=>{c.classList.remove("red"); c.dataset.active="false";});
+  });
+
+  // --- Init ---
+  loadGame();
+  updateUpgradeTooltip();
+  spawnRedCellLoop();
+</script>
+</body>
+</html>
